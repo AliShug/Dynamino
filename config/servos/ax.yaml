@@ -1,0 +1,19 @@
+protocol: dxl1
+models:
+    -   12      # AX-12
+    -   18      # AX-18
+    -   0x0144  # AX-12W
+
+# Parameters
+base_param: &p
+    read: true
+    write: false
+    size: 1
+params:
+    -   <<: *p
+        name: GoalPosition
+        write: true
+        adr: 0x1E
+        size: 2
+        min: 0
+        max: 1024
