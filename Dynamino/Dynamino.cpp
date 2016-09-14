@@ -23,7 +23,8 @@ SOFTWARE.
 
 */
 
-namespace Dynamino {
+#include "Dynamino.h"
+
 void DXL1_write_1mb(uint8_t data, uint8_t pin = 2)
 {
     // 1 Mbaud software serial transmit of 1 byte
@@ -260,14 +261,14 @@ uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *npara
     // Send the request
     digitalWrite(pin, HIGH);
     pinMode(pin, OUTPUT);
-    write_1mb(0xFF);
-    write_1mb(0xFF);
-    write_1mb(id);
-    write_1mb(4);       // base length of 2 + 2 params
-    write_1mb(DXL1_INSTR_READ);
-    write_1mb(adr);
-    write_1mb(len);
-    write_1mb(~(id + 4 + DXL1_INSTR_READ + adr + len));
+    DXL1_write_1mb(0xFF);
+    DXL1_write_1mb(0xFF);
+    DXL1_write_1mb(id);
+    DXL1_write_1mb(4);       // base length of 2 + 2 params
+    DXL1_write_1mb(DXL1_INSTR_READ);
+    DXL1_write_1mb(adr);
+    DXL1_write_1mb(len);
+    DXL1_write_1mb(~(id + 4 + DXL1_INSTR_READ + adr + len));
     pinMode(pin, INPUT);
 
     // Get the response
@@ -346,4 +347,4 @@ void DXL1_printErrorMessage(uint16_t errorCode)
         }
     }
 }
-}
+

@@ -1,4 +1,6 @@
-void DXL1_write_1mb(uint8_t data, uint8_t pin = 2)
+#include "Dynamino.h"
+
+void {{prefix}}_write_1mb(uint8_t data, uint8_t pin = 2)
 {
     // 1 Mbaud software serial transmit of 1 byte
     // This disables interrupts for roughly 10us
@@ -67,9 +69,9 @@ void DXL1_write_1mb(uint8_t data, uint8_t pin = 2)
 }
 
 /**
-    1 megabaud receive for DXL1 status/return packets
+    1 megabaud receive for {{prefix}} status/return packets
  */
-uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
+uint16_t {{prefix}}_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
 {
     // Receive buffer
     uint8_t bytes[255];
@@ -182,24 +184,24 @@ uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
     {
         //Serial.print("Received "); Serial.println(receive_count);
         //Serial.print("Limit "); Serial.println(limit);
-        if (receive_count > DXL1_INDEX_ERR)
+        if (receive_count > {{prefix}}_INDEX_ERR)
         {
-            return DXL__ERRFLAGS_TIMEOUT | bytes[DXL1_INDEX_ERR];
+            return {{family}}__ERRFLAGS_TIMEOUT | bytes[{{prefix}}_INDEX_ERR];
         }
         else
         {
-            return DXL__ERRFLAGS_TIMEOUT;
+            return {{family}}__ERRFLAGS_TIMEOUT;
         }
     }
-    else if (receive_count < DXL1_INDEX_LENGTH || receive_count != bytes[DXL1_INDEX_LENGTH] + 4)
+    else if (receive_count < {{prefix}}_INDEX_LENGTH || receive_count != bytes[{{prefix}}_INDEX_LENGTH] + 4)
     {
-        return DXL__ERRFLAGS_MALFORMED;
+        return {{family}}__ERRFLAGS_MALFORMED;
     }
     else
     {
         // Verify checksum
         uint8_t sum = 0;
-        for (int i = DXL1_INDEX_ID; i < receive_count - 1; i++)
+        for (int i = {{prefix}}_INDEX_ID; i < receive_count - 1; i++)
         {
             sum += bytes[i];
         }
@@ -214,14 +216,14 @@ uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
                 Serial.print(bytes[i], HEX);
                 Serial.print("\n");
             }*/
-            return DXL__ERRFLAGS_CORRUPT;
+            return {{family}}__ERRFLAGS_CORRUPT;
         }
         else
         {
             // All good, fill in the parameter(s) length & buffer and return any servo error flags
-            *nparams = bytes[DXL1_INDEX_LENGTH] - DXL1_BODY_BASELENGTH;
-            memcpy(params_buff, &(bytes[DXL1_INDEX_PARAMS]), *nparams);
-            return bytes[DXL1_INDEX_ERR];
+            *nparams = bytes[{{prefix}}_INDEX_LENGTH] - {{prefix}}_BODY_BASELENGTH;
+            memcpy(params_buff, &(bytes[{{prefix}}_INDEX_PARAMS]), *nparams);
+            return bytes[{{prefix}}_INDEX_ERR];
         }
     }
 }
@@ -229,19 +231,19 @@ uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
 /**
     Performs a read from memory of an attached servo (EEPROM or RAM)
  */
-uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *nparams, uint8_t adr, uint8_t len)
+uint16_t {{prefix}}_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *nparams, uint8_t adr, uint8_t len)
 {
     // Send the request
     digitalWrite(pin, HIGH);
     pinMode(pin, OUTPUT);
-    write_1mb(0xFF);
-    write_1mb(0xFF);
-    write_1mb(id);
-    write_1mb(4);       // base length of 2 + 2 params
-    write_1mb(DXL1_INSTR_READ);
-    write_1mb(adr);
-    write_1mb(len);
-    write_1mb(~(id + 4 + DXL1_INSTR_READ + adr + len));
+    {{prefix}}_write_1mb(0xFF);
+    {{prefix}}_write_1mb(0xFF);
+    {{prefix}}_write_1mb(id);
+    {{prefix}}_write_1mb(4);       // base length of 2 + 2 params
+    {{prefix}}_write_1mb({{prefix}}_INSTR_READ);
+    {{prefix}}_write_1mb(adr);
+    {{prefix}}_write_1mb(len);
+    {{prefix}}_write_1mb(~(id + 4 + {{prefix}}_INSTR_READ + adr + len));
     pinMode(pin, INPUT);
 
     // Get the response
@@ -249,7 +251,7 @@ uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *npara
     uint8_t attempts = 0;
     do
     {
-        status = DXL1_receive_1mb(pin, params_buff, nparams);
+        status = {{prefix}}_receive_1mb(pin, params_buff, nparams);
         attempts++;
     } while (status & 0xFF00 != 0 && attempts < 3);
 }
@@ -257,7 +259,7 @@ uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *npara
 /**
     Performs a write to memory of an attached servo (EEPROM or RAM)
  */
-uint16_t DXL1_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t nparams, uint8_t adr)
+uint16_t {{prefix}}_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t nparams, uint8_t adr)
 {
     return 0;
 }
@@ -265,56 +267,56 @@ uint16_t DXL1_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t npara
 /**
     Prints a verbose error message to serial for the given error/status code
  */
-void DXL1_printErrorMessage(uint16_t errorCode)
+void {{prefix}}_printErrorMessage(uint16_t errorCode)
 {
-    if (errorCode == DXL__ERRFLAGS_OK)
+    if (errorCode == {{family}}__ERRFLAGS_OK)
     {
-        Serial.println("DXL1 No Error (DXL__ERRFLAGS_OK)");
+        Serial.println("{{prefix}} No Error ({{family}}__ERRFLAGS_OK)");
     }
     else
     {
-        Serial.println("DXL1 Error:");
-        if (errorCode & DXL__ERRFLAGS_TIMEOUT)
+        Serial.println("{{prefix}} Error:");
+        if (errorCode & {{family}}__ERRFLAGS_TIMEOUT)
         {
             Serial.println("<RECEIVE> TIMEOUT");
         }
-        if (errorCode & DXL__ERRFLAGS_CORRUPT)
+        if (errorCode & {{family}}__ERRFLAGS_CORRUPT)
         {
             Serial.println("<RECEIVE> CORRUPTED PACKET (failed checksum)");
         }
-        if (errorCode & DXL__ERRFLAGS_MALFORMED)
+        if (errorCode & {{family}}__ERRFLAGS_MALFORMED)
         {
             Serial.println("<RECEIVE> MALFORMED PACKET (unexpected length variation)");
         }
-        if (errorCode & DXL1_ERRFLAGS_ANGLELIM)
+        if (errorCode & {{prefix}}_ERRFLAGS_ANGLELIM)
         {
             Serial.println("<SEND> ANGLE LIMIT ERROR (goal position out of range)");
         }
-        if (errorCode & DXL1_ERRFLAGS_CHECKSUM)
+        if (errorCode & {{prefix}}_ERRFLAGS_CHECKSUM)
         {
             Serial.println("<SEND> CORRUPTED PACKET (failed checksum)");
         }
-        if (errorCode & DXL1_ERRFLAGS_INSTR)
+        if (errorCode & {{prefix}}_ERRFLAGS_INSTR)
         {
             Serial.println("<SEND> INSTRUCTION (undefined or invalid instruction)");
         }
-        if (errorCode & DXL1_ERRFLAGS_OPRANGE)
+        if (errorCode & {{prefix}}_ERRFLAGS_OPRANGE)
         {
             Serial.println("<SEND> PARAMETER RANGE (instruction parameter out of range)");
         }
-        if (errorCode & DXL1_ERRFLAGS_OVERHEAT)
+        if (errorCode & {{prefix}}_ERRFLAGS_OVERHEAT)
         {
             Serial.println("<STATUS> OVERHEAT (internal temperature is outside safe operating range!)");
         }
-        if (errorCode & DXL1_ERRFLAGS_OVERLOAD)
+        if (errorCode & {{prefix}}_ERRFLAGS_OVERLOAD)
         {
             Serial.println("<STATUS> OVERLOAD (motor loading is outside safe operating range!)");
         }
-        if (errorCode & DXL1_ERRFLAGS_VOLTAGE)
+        if (errorCode & {{prefix}}_ERRFLAGS_VOLTAGE)
         {
             Serial.println("<STATUS> VOLTAGE (supply voltage outside safe operating range!)");
         }
-        if (errorCode & DXL1_ERRFLAGS_UNDEF)
+        if (errorCode & {{prefix}}_ERRFLAGS_UNDEF)
         {
             Serial.println("<STATUS> UNKNOWN (undefined status bit 7 is set)");
         }

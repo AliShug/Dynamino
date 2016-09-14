@@ -1,4 +1,4 @@
-import os, errno, sys, yaml
+import os, errno, sys, yaml, platform
 from jinja2 import Environment, PackageLoader
 
 # Jinja2 environment, configured to 'template/' dir
@@ -25,6 +25,7 @@ def gen_target(target):
         # Load protocol configuration file
         stream = file('config/{0}_shared.yaml'.format(protocol))
         protocol_config = yaml.load(stream)
+        print(protocol_config)
         stream.close()
         # Render protocol templates
         cpp_template = env.get_template('{0}_shared.template.cpp'.format(protocol))
@@ -55,16 +56,30 @@ for t in targets:
     gen_target(t)
 
 # Save the generated files
+fmt_str = '/*\n{0}\n*/\n\n{1}\n\n'
+full_cpp = fmt_str.format(license, core_cpp)
+full_h = fmt_str.format(license, core_h);
+
 stream = file('Dynamino/Dynamino.cpp', 'w')
-stream.write('/*\n{0}\n*/\n\n'.format(license))
-stream.write('namespace Dynamino {\n')
-stream.write(core_cpp)
-stream.write('\n}\n')
+stream.write(full_cpp)
 stream.close()
 
 stream = file('Dynamino/Dynamino.h', 'w')
-stream.write('/*\n{0}\n*/\n\n'.format(license))
-stream.write('namespace Dynamino {\n')
-stream.write(core_h)
-stream.write('\n}\n')
+stream.write(full_h)
 stream.close()
+
+if platform.system() == 'Windows':
+    # Update the local Arduino lib
+    profilePath = os.environ.get('USERPROFILE')
+    if profilePath != None:
+        libPath = profilePath + '/Documents/Arduino/libraries'
+        cname = 'Dynamino'
+        try:
+            os.makedirs('{0}/{1}'.format(libPath,cname))
+        except OSError as exception:
+            if exception.errno != errno.EEXIST:
+                raise
+        file('{lib}/{c}/{c}.cpp'.format(lib=libPath, c=cname), 'w').write(full_cpp)
+        file('{lib}/{c}/{c}.h'.format(lib=libPath, c=cname), 'w').write(full_h)
+    else:
+        print 'Unable to locate arduino library directory'
