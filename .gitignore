@@ -1,6 +1,7 @@
 __vm/
 *.vcxproj
 *.vcxproj.filters
+*.sln
 
 
 ## Ignore Visual Studio temporary files, build results, and
