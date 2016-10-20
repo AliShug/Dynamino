@@ -1,6 +1,6 @@
 #include "Dynamino.h"
 
-void {{prefix}}_write_1mb(uint8_t data, uint8_t pin = 2)
+void {{prefix}}_write_1mb(uint8_t data, uint8_t pin)
 {
     // 1 Mbaud software serial transmit of 1 byte
     // This disables interrupts for roughly 10us
@@ -14,7 +14,7 @@ void {{prefix}}_write_1mb(uint8_t data, uint8_t pin = 2)
         "tmp=18 \n"     // Temporary storage in high registers
 
         // setup
-        "cli \n"
+        //"cli \n"
 
         "in on, 0x0B \n"        // Read/modify port of interest
         "mov off, on \n"
@@ -59,8 +59,8 @@ void {{prefix}}_write_1mb(uint8_t data, uint8_t pin = 2)
         // finish byte
         "nop\n nop\n"
         "out 0x0B, on \n"
-        "sei \n"
-        "nop\n nop\n nop\n nop\n"
+        //"sei \n"
+        //"nop\n nop\n nop\n nop\n"
         :
         :   [count] "r" (c),
             [data]  "r" (d),
@@ -221,8 +221,11 @@ uint16_t {{prefix}}_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *npa
         else
         {
             // All good, fill in the parameter(s) length & buffer and return any servo error flags
-            *nparams = bytes[{{prefix}}_INDEX_LENGTH] - {{prefix}}_BODY_BASELENGTH;
-            memcpy(params_buff, &(bytes[{{prefix}}_INDEX_PARAMS]), *nparams);
+            if (nparams != NULL && params_buff != NULL)
+            {
+                *nparams = bytes[{{prefix}}_INDEX_LENGTH] - {{prefix}}_BODY_BASELENGTH;
+                memcpy(params_buff, &(bytes[{{prefix}}_INDEX_PARAMS]), *nparams);
+            }
             return bytes[{{prefix}}_INDEX_ERR];
         }
     }
@@ -236,14 +239,15 @@ uint16_t {{prefix}}_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t 
     // Send the request
     digitalWrite(pin, HIGH);
     pinMode(pin, OUTPUT);
-    {{prefix}}_write_1mb(0xFF);
-    {{prefix}}_write_1mb(0xFF);
-    {{prefix}}_write_1mb(id);
-    {{prefix}}_write_1mb(4);       // base length of 2 + 2 params
-    {{prefix}}_write_1mb({{prefix}}_INSTR_READ);
-    {{prefix}}_write_1mb(adr);
-    {{prefix}}_write_1mb(len);
-    {{prefix}}_write_1mb(~(id + 4 + {{prefix}}_INSTR_READ + adr + len));
+    noInterrupts();
+    {{prefix}}_write_1mb(0xFF, pin);
+    {{prefix}}_write_1mb(0xFF, pin);
+    {{prefix}}_write_1mb(id, pin);
+    {{prefix}}_write_1mb(4, pin);       // base length of 2 + 2 params
+    {{prefix}}_write_1mb({{prefix}}_INSTR_READ, pin);
+    {{prefix}}_write_1mb(adr, pin);
+    {{prefix}}_write_1mb(len, pin);
+    {{prefix}}_write_1mb(~(id + 4 + {{prefix}}_INSTR_READ + adr + len), pin);
     pinMode(pin, INPUT);
 
     // Get the response
@@ -254,6 +258,9 @@ uint16_t {{prefix}}_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t 
         status = {{prefix}}_receive_1mb(pin, params_buff, nparams);
         attempts++;
     } while (status & 0xFF00 != 0 && attempts < 3);
+    interrupts();
+
+    return status;
 }
 
 /**
@@ -261,7 +268,37 @@ uint16_t {{prefix}}_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t 
  */
 uint16_t {{prefix}}_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t nparams, uint8_t adr)
 {
-    return 0;
+    // Send the request
+    digitalWrite(pin, HIGH);
+    pinMode(pin, OUTPUT);
+    uint8_t len = 3 + nparams; // base length of 2 + address + data to write
+    // begin checksum
+    uint8_t sum = id + len + {{prefix}}_INSTR_WRITE + adr;
+    noInterrupts();
+    {{prefix}}_write_1mb(0xFF, pin);
+    {{prefix}}_write_1mb(0xFF, pin);
+    {{prefix}}_write_1mb(id, pin);
+    {{prefix}}_write_1mb(len, pin);
+    {{prefix}}_write_1mb({{prefix}}_INSTR_WRITE, pin);
+    {{prefix}}_write_1mb(adr, pin);
+    for (int i = 0; i < nparams; i++) {
+        sum += params_buff[i];
+        {{prefix}}_write_1mb(params_buff[i], pin);
+    }
+    {{prefix}}_write_1mb(~(sum), pin);
+    pinMode(pin, INPUT);
+
+    // Get the response
+    uint16_t status;
+    uint8_t attempts = 0;
+    do
+    {
+        status = {{prefix}}_receive_1mb(pin, NULL, NULL);
+        attempts++;
+    } while (status & 0xFF00 != 0 && attempts < 3);
+    interrupts();
+
+    return status;
 }
 
 /**
@@ -271,54 +308,54 @@ void {{prefix}}_printErrorMessage(uint16_t errorCode)
 {
     if (errorCode == {{family}}__ERRFLAGS_OK)
     {
-        Serial.println("{{prefix}} No Error ({{family}}__ERRFLAGS_OK)");
+        Serial.println(F("{{prefix}} No Error ({{family}}__ERRFLAGS_OK)"));
     }
     else
     {
-        Serial.println("{{prefix}} Error:");
+        Serial.println(F("{{prefix}} Error:"));
         if (errorCode & {{family}}__ERRFLAGS_TIMEOUT)
         {
-            Serial.println("<RECEIVE> TIMEOUT");
+            Serial.println(F("<RECEIVE> TIMEOUT"));
         }
         if (errorCode & {{family}}__ERRFLAGS_CORRUPT)
         {
-            Serial.println("<RECEIVE> CORRUPTED PACKET (failed checksum)");
+            Serial.println(F("<RECEIVE> CORRUPTED PACKET (failed checksum)"));
         }
         if (errorCode & {{family}}__ERRFLAGS_MALFORMED)
         {
-            Serial.println("<RECEIVE> MALFORMED PACKET (unexpected length variation)");
+            Serial.println(F("<RECEIVE> MALFORMED PACKET (unexpected length variation)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_ANGLELIM)
         {
-            Serial.println("<SEND> ANGLE LIMIT ERROR (goal position out of range)");
+            Serial.println(F("<SEND> ANGLE LIMIT ERROR (goal position out of range)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_CHECKSUM)
         {
-            Serial.println("<SEND> CORRUPTED PACKET (failed checksum)");
+            Serial.println(F("<SEND> CORRUPTED PACKET (failed checksum)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_INSTR)
         {
-            Serial.println("<SEND> INSTRUCTION (undefined or invalid instruction)");
+            Serial.println(F("<SEND> INSTRUCTION (undefined or invalid instruction)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_OPRANGE)
         {
-            Serial.println("<SEND> PARAMETER RANGE (instruction parameter out of range)");
+            Serial.println(F("<SEND> PARAMETER RANGE (instruction parameter out of range)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_OVERHEAT)
         {
-            Serial.println("<STATUS> OVERHEAT (internal temperature is outside safe operating range!)");
+            Serial.println(F("<STATUS> OVERHEAT (internal temperature is outside safe operating range!)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_OVERLOAD)
         {
-            Serial.println("<STATUS> OVERLOAD (motor loading is outside safe operating range!)");
+            Serial.println(F("<STATUS> OVERLOAD (motor loading is outside safe operating range!)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_VOLTAGE)
         {
-            Serial.println("<STATUS> VOLTAGE (supply voltage outside safe operating range!)");
+            Serial.println(F("<STATUS> VOLTAGE (supply voltage outside safe operating range!)"));
         }
         if (errorCode & {{prefix}}_ERRFLAGS_UNDEF)
         {
-            Serial.println("<STATUS> UNKNOWN (undefined status bit 7 is set)");
+            Serial.println(F("<STATUS> UNKNOWN (undefined status bit 7 is set)"));
         }
     }
 }

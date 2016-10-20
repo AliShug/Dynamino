@@ -1,4 +1,11 @@
-import os, errno, sys, yaml, platform
+import os
+import errno
+import sys
+import platform
+import shutil
+
+import yaml
+
 from jinja2 import Environment, PackageLoader
 
 # Jinja2 environment, configured to 'template/' dir
@@ -72,14 +79,19 @@ if platform.system() == 'Windows':
     # Update the local Arduino lib
     profilePath = os.environ.get('USERPROFILE')
     if profilePath != None:
-        libPath = profilePath + '/Documents/Arduino/libraries'
-        cname = 'Dynamino'
+        libPath = profilePath + '/Documents/Arduino/libraries/Dynamino'
+        # cname = 'Dynamino'
+        # try:
+        #     os.makedirs('{0}/{1}'.format(libPath,cname))
+        # except OSError as exception:
+        #     if exception.errno != errno.EEXIST:
+        #         raise
+        # file('{lib}/{c}/{c}.cpp'.format(lib=libPath, c=cname), 'w').write(full_cpp)
+        # file('{lib}/{c}/{c}.h'.format(lib=libPath, c=cname), 'w').write(full_h)
         try:
-            os.makedirs('{0}/{1}'.format(libPath,cname))
-        except OSError as exception:
-            if exception.errno != errno.EEXIST:
-                raise
-        file('{lib}/{c}/{c}.cpp'.format(lib=libPath, c=cname), 'w').write(full_cpp)
-        file('{lib}/{c}/{c}.h'.format(lib=libPath, c=cname), 'w').write(full_h)
+            shutil.rmtree(libPath, ignore_errors=True)
+            shutil.copytree('Dynamino', libPath)
+        except shutil.Error as exception:
+            print(exception)
     else:
-        print 'Unable to locate arduino library directory'
+        print 'Unable to locate current user\'s directory'

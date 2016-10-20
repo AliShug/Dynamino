@@ -25,7 +25,7 @@ SOFTWARE.
 
 #include "Dynamino.h"
 
-void DXL1_write_1mb(uint8_t data, uint8_t pin = 2)
+void DXL1_write_1mb(uint8_t data, uint8_t pin)
 {
     // 1 Mbaud software serial transmit of 1 byte
     // This disables interrupts for roughly 10us
@@ -39,7 +39,7 @@ void DXL1_write_1mb(uint8_t data, uint8_t pin = 2)
         "tmp=18 \n"     // Temporary storage in high registers
 
         // setup
-        "cli \n"
+        //"cli \n"
 
         "in on, 0x0B \n"        // Read/modify port of interest
         "mov off, on \n"
@@ -84,8 +84,8 @@ void DXL1_write_1mb(uint8_t data, uint8_t pin = 2)
         // finish byte
         "nop\n nop\n"
         "out 0x0B, on \n"
-        "sei \n"
-        "nop\n nop\n nop\n nop\n"
+        //"sei \n"
+        //"nop\n nop\n nop\n nop\n"
         :
         :   [count] "r" (c),
             [data]  "r" (d),
@@ -261,14 +261,15 @@ uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *npara
     // Send the request
     digitalWrite(pin, HIGH);
     pinMode(pin, OUTPUT);
-    DXL1_write_1mb(0xFF);
-    DXL1_write_1mb(0xFF);
-    DXL1_write_1mb(id);
-    DXL1_write_1mb(4);       // base length of 2 + 2 params
-    DXL1_write_1mb(DXL1_INSTR_READ);
-    DXL1_write_1mb(adr);
-    DXL1_write_1mb(len);
-    DXL1_write_1mb(~(id + 4 + DXL1_INSTR_READ + adr + len));
+    noInterrupts();
+    DXL1_write_1mb(0xFF, pin);
+    DXL1_write_1mb(0xFF, pin);
+    DXL1_write_1mb(id, pin);
+    DXL1_write_1mb(4, pin);       // base length of 2 + 2 params
+    DXL1_write_1mb(DXL1_INSTR_READ, pin);
+    DXL1_write_1mb(adr, pin);
+    DXL1_write_1mb(len, pin);
+    DXL1_write_1mb(~(id + 4 + DXL1_INSTR_READ + adr + len), pin);
     pinMode(pin, INPUT);
 
     // Get the response
@@ -279,6 +280,9 @@ uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *npara
         status = DXL1_receive_1mb(pin, params_buff, nparams);
         attempts++;
     } while (status & 0xFF00 != 0 && attempts < 3);
+    interrupts();
+
+    return status;
 }
 
 /**
@@ -286,7 +290,37 @@ uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *npara
  */
 uint16_t DXL1_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t nparams, uint8_t adr)
 {
-    return 0;
+    // Send the request
+    digitalWrite(pin, HIGH);
+    pinMode(pin, OUTPUT);
+    uint8_t len = 3 + nparams; // base length of 2 + address + data to write
+    // begin checksum
+    uint8_t sum = id + len + DXL1_INSTR_WRITE + adr;
+    noInterrupts();
+    DXL1_write_1mb(0xFF, pin);
+    DXL1_write_1mb(0xFF, pin);
+    DXL1_write_1mb(id, pin);
+    DXL1_write_1mb(len, pin);
+    DXL1_write_1mb(DXL1_INSTR_WRITE, pin);
+    DXL1_write_1mb(adr, pin);
+    for (int i = 0; i < nparams; i++) {
+        sum += params_buff[i];
+        DXL1_write_1mb(params_buff[i], pin);
+    }
+    DXL1_write_1mb(~(sum), pin);
+    pinMode(pin, INPUT);
+
+    // Get the response
+    uint16_t status;
+    uint8_t attempts = 0;
+    do
+    {
+        status = DXL1_receive_1mb(pin, NULL, 0);
+        attempts++;
+    } while (status & 0xFF00 != 0 && attempts < 3);
+    interrupts();
+
+    return status;
 }
 
 /**
@@ -296,54 +330,54 @@ void DXL1_printErrorMessage(uint16_t errorCode)
 {
     if (errorCode == DXL__ERRFLAGS_OK)
     {
-        Serial.println("DXL1 No Error (DXL__ERRFLAGS_OK)");
+        Serial.println(F("DXL1 No Error (DXL__ERRFLAGS_OK)"));
     }
     else
     {
-        Serial.println("DXL1 Error:");
+        Serial.println(F("DXL1 Error:"));
         if (errorCode & DXL__ERRFLAGS_TIMEOUT)
         {
-            Serial.println("<RECEIVE> TIMEOUT");
+            Serial.println(F("<RECEIVE> TIMEOUT"));
         }
         if (errorCode & DXL__ERRFLAGS_CORRUPT)
         {
-            Serial.println("<RECEIVE> CORRUPTED PACKET (failed checksum)");
+            Serial.println(F("<RECEIVE> CORRUPTED PACKET (failed checksum)"));
         }
         if (errorCode & DXL__ERRFLAGS_MALFORMED)
         {
-            Serial.println("<RECEIVE> MALFORMED PACKET (unexpected length variation)");
+            Serial.println(F("<RECEIVE> MALFORMED PACKET (unexpected length variation)"));
         }
         if (errorCode & DXL1_ERRFLAGS_ANGLELIM)
         {
-            Serial.println("<SEND> ANGLE LIMIT ERROR (goal position out of range)");
+            Serial.println(F("<SEND> ANGLE LIMIT ERROR (goal position out of range)"));
         }
         if (errorCode & DXL1_ERRFLAGS_CHECKSUM)
         {
-            Serial.println("<SEND> CORRUPTED PACKET (failed checksum)");
+            Serial.println(F("<SEND> CORRUPTED PACKET (failed checksum)"));
         }
         if (errorCode & DXL1_ERRFLAGS_INSTR)
         {
-            Serial.println("<SEND> INSTRUCTION (undefined or invalid instruction)");
+            Serial.println(F("<SEND> INSTRUCTION (undefined or invalid instruction)"));
         }
         if (errorCode & DXL1_ERRFLAGS_OPRANGE)
         {
-            Serial.println("<SEND> PARAMETER RANGE (instruction parameter out of range)");
+            Serial.println(F("<SEND> PARAMETER RANGE (instruction parameter out of range)"));
         }
         if (errorCode & DXL1_ERRFLAGS_OVERHEAT)
         {
-            Serial.println("<STATUS> OVERHEAT (internal temperature is outside safe operating range!)");
+            Serial.println(F("<STATUS> OVERHEAT (internal temperature is outside safe operating range!)"));
         }
         if (errorCode & DXL1_ERRFLAGS_OVERLOAD)
         {
-            Serial.println("<STATUS> OVERLOAD (motor loading is outside safe operating range!)");
+            Serial.println(F("<STATUS> OVERLOAD (motor loading is outside safe operating range!)"));
         }
         if (errorCode & DXL1_ERRFLAGS_VOLTAGE)
         {
-            Serial.println("<STATUS> VOLTAGE (supply voltage outside safe operating range!)");
+            Serial.println(F("<STATUS> VOLTAGE (supply voltage outside safe operating range!)"));
         }
         if (errorCode & DXL1_ERRFLAGS_UNDEF)
         {
-            Serial.println("<STATUS> UNKNOWN (undefined status bit 7 is set)");
+            Serial.println(F("<STATUS> UNKNOWN (undefined status bit 7 is set)"));
         }
     }
 }
