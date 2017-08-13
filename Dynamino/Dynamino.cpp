@@ -24,8 +24,9 @@ SOFTWARE.
 */
 
 #include "Dynamino.h"
+#include <avr/cpufunc.h>
 
-void DXL1_write_1mb(uint8_t data, uint8_t pin)
+void write_1mb(uint8_t data, uint8_t pin)
 {
     // 1 Mbaud software serial transmit of 1 byte
     // This disables interrupts for roughly 10us
@@ -93,25 +94,16 @@ void DXL1_write_1mb(uint8_t data, uint8_t pin)
         :   "r16", "r17", "r18");
 }
 
-/**
-    1 megabaud receive for DXL1 status/return packets
- */
-uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
+void DXL1_asm_receive_1mb(uint8_t pin, volatile uint8_t *bytes, uint16_t *initial_timeout, uint8_t *receive_count)
 {
-    // Receive buffer
-    uint8_t bytes[255];
-
     // ASM inputs
-    volatile uint16_t initial_timeout = 5000;
-    volatile uint16_t interim_timeout = 2000;
+    volatile uint16_t timeoutA = *initial_timeout;
+    volatile uint16_t timeoutB = 2000;
     volatile uint8_t input_mask = 1 << pin;
 
     // ASM outputs
-    volatile uint8_t receive_count = 0;
+    volatile uint8_t counter = 0;
     volatile uint8_t limit;
-
-    // Default to 0 params output in case of error
-    *nparams = 0;
 
     // This block of inline assembly performs a rapid poll of the selected input pin,
     // searching for a LOW signalling the start of a serial byte (should be picked up
@@ -195,14 +187,42 @@ uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
         "cbi 0x0B, 3 \n"
         "sei \n"
 
-        :   [timeout] "+w" (initial_timeout), // timeout counter MUST be placed in a dedicated register pair
-            [rec_total] "+d" (receive_count),
+        :   [timeout] "+w" (timeoutA), // timeout counter MUST be placed in a dedicated register pair
+            [rec_total] "+d" (counter),
             [limit] "+d" (limit),
             [mask] "+l" (input_mask), // works in lower reg
-            [mid_timeout] "+l" (interim_timeout) // reset timeout shoved in a lower register pair
+            [mid_timeout] "+l" (timeoutB), // reset timeout shoved in a lower register pair
+            [adr] "+x" (bytes)
 
-        :   [adr] "x" (bytes)
+        :
         :   "r16", "r17", "r18", "memory");
+
+    // Return values
+    *initial_timeout = timeoutA;
+    *receive_count = counter;
+}
+
+/**
+    1 megabaud receive for DXL1 status/return packets
+ */
+uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
+{
+    // Receive buffer
+    volatile uint8_t bytes[255];
+
+    // Default to 0 params output in case of error
+    if (nparams != NULL)
+    {
+        *nparams = 0;
+    }
+
+    // ASM IO
+    uint16_t initial_timeout = 5000;
+    uint8_t receive_count = 0;
+    //uint8_t limit;
+    // Perform the receive (isolated to stop register weirdness)
+    DXL1_asm_receive_1mb(pin, bytes, &initial_timeout, &receive_count);
+    //_MemoryBarrier();
 
     // If the timeout counter has dropped to zero, we exited without completing the packet
     if (initial_timeout == 0)
@@ -230,24 +250,28 @@ uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams)
         {
             sum += bytes[i];
         }
-        //Serial.print("SUM "); Serial.println(sum, HEX);
-        uint8_t chk = 0xFF ^ sum;
+
+        uint8_t chk = ~sum;
         if (bytes[receive_count - 1] != chk)
         {
-            /*Serial.print("Checksum "); Serial.print(bytes[receive_count - 1], HEX);
-            Serial.print(" does not match calculated "); Serial.println(chk, HEX);
-            for (int i = 0; i < receive_count; i++)
-            {
-                Serial.print(bytes[i], HEX);
-                Serial.print("\n");
-            }*/
+            // Serial.print("Checksum "); Serial.print(bytes[receive_count - 1], HEX);
+            // Serial.print(" does not match calculated "); Serial.println(chk, HEX);
+            // for (int i = 0; i < receive_count; i++)
+            // {
+            //     Serial.print(bytes[i], HEX);
+            //     Serial.print("\n");
+            // }
+
             return DXL__ERRFLAGS_CORRUPT;
         }
         else
         {
             // All good, fill in the parameter(s) length & buffer and return any servo error flags
-            *nparams = bytes[DXL1_INDEX_LENGTH] - DXL1_BODY_BASELENGTH;
-            memcpy(params_buff, &(bytes[DXL1_INDEX_PARAMS]), *nparams);
+            if (nparams != NULL && params_buff != NULL)
+            {
+                *nparams = bytes[DXL1_INDEX_LENGTH] - DXL1_BODY_BASELENGTH;
+                memcpy(params_buff, &(bytes[DXL1_INDEX_PARAMS]), *nparams);
+            }
             return bytes[DXL1_INDEX_ERR];
         }
     }
@@ -262,14 +286,14 @@ uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *npara
     digitalWrite(pin, HIGH);
     pinMode(pin, OUTPUT);
     noInterrupts();
-    DXL1_write_1mb(0xFF, pin);
-    DXL1_write_1mb(0xFF, pin);
-    DXL1_write_1mb(id, pin);
-    DXL1_write_1mb(4, pin);       // base length of 2 + 2 params
-    DXL1_write_1mb(DXL1_INSTR_READ, pin);
-    DXL1_write_1mb(adr, pin);
-    DXL1_write_1mb(len, pin);
-    DXL1_write_1mb(~(id + 4 + DXL1_INSTR_READ + adr + len), pin);
+    write_1mb(0xFF, pin);
+    write_1mb(0xFF, pin);
+    write_1mb(id, pin);
+    write_1mb(4, pin);       // base length of 2 + 2 params
+    write_1mb(DXL1_INSTR_READ, pin);
+    write_1mb(adr, pin);
+    write_1mb(len, pin);
+    write_1mb(~(id + 4 + DXL1_INSTR_READ + adr + len), pin);
     pinMode(pin, INPUT);
 
     // Get the response
@@ -297,17 +321,17 @@ uint16_t DXL1_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t npara
     // begin checksum
     uint8_t sum = id + len + DXL1_INSTR_WRITE + adr;
     noInterrupts();
-    DXL1_write_1mb(0xFF, pin);
-    DXL1_write_1mb(0xFF, pin);
-    DXL1_write_1mb(id, pin);
-    DXL1_write_1mb(len, pin);
-    DXL1_write_1mb(DXL1_INSTR_WRITE, pin);
-    DXL1_write_1mb(adr, pin);
+    write_1mb(0xFF, pin);
+    write_1mb(0xFF, pin);
+    write_1mb(id, pin);
+    write_1mb(len, pin);
+    write_1mb(DXL1_INSTR_WRITE, pin);
+    write_1mb(adr, pin);
     for (int i = 0; i < nparams; i++) {
         sum += params_buff[i];
-        DXL1_write_1mb(params_buff[i], pin);
+        write_1mb(params_buff[i], pin);
     }
-    DXL1_write_1mb(~(sum), pin);
+    write_1mb(~(sum), pin);
     pinMode(pin, INPUT);
 
     // Get the response
@@ -315,7 +339,7 @@ uint16_t DXL1_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t npara
     uint8_t attempts = 0;
     do
     {
-        status = DXL1_receive_1mb(pin, NULL, 0);
+        status = DXL1_receive_1mb(pin, NULL, NULL);
         attempts++;
     } while (status & 0xFF00 != 0 && attempts < 3);
     interrupts();
@@ -381,4 +405,3 @@ void DXL1_printErrorMessage(uint16_t errorCode)
         }
     }
 }
-

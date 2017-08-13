@@ -65,7 +65,7 @@ SOFTWARE.
 #define DXL__ERRFLAGS_MALFORMED     0x0400
 
 // Core functionality for V1 protocol
-void DXL1_write_1mb(uint8_t data, uint8_t pin = 2);
+void write_1mb(uint8_t data, uint8_t pin = 2);
 uint16_t DXL1_receive_1mb(uint8_t pin, uint8_t params_buff[], uint8_t *nparams);
 uint16_t DXL1_read(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t *nparams, uint8_t adr, uint8_t len);
 uint16_t DXL1_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t nparams, uint8_t adr);
@@ -74,4 +74,3 @@ uint16_t DXL1_write(uint8_t pin, uint8_t id, uint8_t *params_buff, uint8_t npara
 void DXL1_printErrorMessage(uint16_t errorCode);
 
 #endif
-
